@@ -50,7 +50,7 @@ func newTestParser(t *testing.T, text string) (p *Parser) {
 	if err != nil {
 		t.Fatalf("lexer instantiation failed")
 	}
-	p = NewParser(l)
+	p, _ = NewParser(l)
 
 	return p
 }

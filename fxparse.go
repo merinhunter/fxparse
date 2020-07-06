@@ -15,19 +15,29 @@ type Parser struct {
 	l     *fxlex.Lexer
 	nErr  int
 	depth int
+	//stkEnv fxsym.StkEnv
 }
 
-func NewParser(l *fxlex.Lexer) *Parser {
-	return &Parser{l, 0, 0}
+func NewParser(l *fxlex.Lexer) (p *Parser, err error) {
+	//p = &Parser{l, 0, 0, nil}
+	p = &Parser{l, 0, 0}
+
+	// p.stkEnv.PushEnv()
+	// p.initSyms()
+	// p.stkEnv.PushEnv()
+
+	return p, nil
 }
 
 func (p *Parser) Parse() error {
 	p.pushTrace("Parse")
 	defer p.popTrace()
 
-	if err := p.Prog(); err != nil {
+	prog := NewProg()
+	if err := p.Prog(prog); err != nil {
 		return err
 	}
+	fmt.Print(prog)
 
 	return nil
 }
@@ -72,7 +82,7 @@ func (p *Parser) popTrace() {
 
 // <PROG> ::= 'func' <FUNC> <PROG> |
 //            'EOF'
-func (p *Parser) Prog() error {
+func (p *Parser) Prog(prog *Prog) error {
 	p.pushTrace("Prog")
 	defer p.popTrace()
 
@@ -87,11 +97,14 @@ func (p *Parser) Prog() error {
 		p.pushTrace("\"func\"")
 		p.popTrace()
 
-		if err := p.Func(); err != nil {
+		f, err := p.Func()
+		if err != nil {
 			return err
 		}
 
-		return p.Prog()
+		prog.AddFunc(f)
+
+		return p.Prog(prog)
 	case fxlex.TokEOF:
 		t, err = p.l.Lex()
 		p.pushTrace("\"EOF\"")
@@ -105,51 +118,53 @@ func (p *Parser) Prog() error {
 }
 
 // <FUNC> ::= <HEAD> '{' <BODY> '}'
-func (p *Parser) Func() error {
+func (p *Parser) Func() (f *Func, err error) {
 	p.pushTrace("Func")
 	defer p.popTrace()
 
-	if err := p.Head(); err != nil {
-		return err
+	f = NewFunc()
+
+	if err := p.Head(f.Head()); err != nil {
+		return nil, err
 	}
 
 	t, isLCurl, err := p.match(fxlex.TokLCurl)
 	if err != nil {
-		return err
+		return nil, err
 	} else if !isLCurl {
 		p.errorf("%s:%d: syntax error: macro bad definition",
 			p.l.GetFilename(), p.l.GetLineNumber())
 		err = p.l.SkipUntil(fxlex.TokLCurl, fxlex.TokRCurl)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	} else {
 		p.pushTrace(fmt.Sprintf("%s", t))
 		p.popTrace()
 	}
 
-	if err := p.Body(); err != nil {
-		return err
+	if err := p.Body(f.Body()); err != nil {
+		return nil, err
 	}
 
 	t, isRCurl, err := p.match(fxlex.TokRCurl)
 	if err != nil {
-		return err
+		return nil, err
 	} else if !isRCurl {
 		p.errorf("%s:%d: syntax error: macro bad definition",
 			p.l.GetFilename(), p.l.GetLineNumber())
 		err = p.l.SkipUntilAndLex(fxlex.TokRCurl)
-		return err
+		return nil, err
 	} else {
 		p.pushTrace(fmt.Sprintf("%s", t))
 		p.popTrace()
 	}
 
-	return err
+	return f, err
 }
 
 // <HEAD> ::= id '(' <FORMAL_PRMS> ')'
-func (p *Parser) Head() error {
+func (p *Parser) Head(head *Head) error {
 	p.pushTrace("Head")
 	defer p.popTrace()
 
@@ -166,6 +181,8 @@ func (p *Parser) Head() error {
 	} else {
 		p.pushTrace(fmt.Sprintf("ID %s", t))
 		p.popTrace()
+
+		head.AddID(t.GetLexeme())
 	}
 
 	t, isLPar, err := p.match(fxlex.TokLPar)
@@ -183,7 +200,7 @@ func (p *Parser) Head() error {
 		p.popTrace()
 	}
 
-	if err := p.FormalPrms(); err != nil {
+	if err := p.FormalPrms(head); err != nil {
 		return err
 	}
 
@@ -205,17 +222,21 @@ func (p *Parser) Head() error {
 
 // <FORMAL_PRMS> ::= type_id id <PRMS> |
 //                   <Empty>
-func (p *Parser) FormalPrms() error {
+func (p *Parser) FormalPrms(head *Head) error {
 	p.pushTrace("FormalPrms")
 	defer p.popTrace()
+
+	param := NewVar()
 
 	t, isTypeID, err := p.match(fxlex.TokID)
 	if err != nil || !isTypeID {
 		return err
-	} else {
-		p.pushTrace(fmt.Sprintf("TypeID %s", t))
-		p.popTrace()
 	}
+
+	p.pushTrace(fmt.Sprintf("TypeID %s", t))
+	p.popTrace()
+
+	param.AddVarType(t.GetTokType())
 
 	t, isID, err := p.match(fxlex.TokID)
 	if err != nil {
@@ -230,14 +251,18 @@ func (p *Parser) FormalPrms() error {
 	} else {
 		p.pushTrace(fmt.Sprintf("ID %s", t))
 		p.popTrace()
+
+		param.AddID(t.GetLexeme())
 	}
 
-	return p.Prms()
+	head.AddParam(param)
+
+	return p.Prms(head)
 }
 
 // <PRMS> ::= ',' type_id id <PRMS>
 //            <Empty>
-func (p *Parser) Prms() error {
+func (p *Parser) Prms(head *Head) error {
 	p.pushTrace("Prms")
 	defer p.popTrace()
 
@@ -248,6 +273,8 @@ func (p *Parser) Prms() error {
 		p.pushTrace(fmt.Sprintf("%s", t))
 		p.popTrace()
 	}
+
+	param := NewVar()
 
 	t, isTypeID, err := p.match(fxlex.TokID)
 	if err != nil {
@@ -262,6 +289,8 @@ func (p *Parser) Prms() error {
 	} else {
 		p.pushTrace(fmt.Sprintf("TypeID %s", t))
 		p.popTrace()
+
+		param.AddVarType(t.GetTokType())
 	}
 
 	t, isID, err := p.match(fxlex.TokID)
@@ -277,16 +306,21 @@ func (p *Parser) Prms() error {
 	} else {
 		p.pushTrace(fmt.Sprintf("ID %s", t))
 		p.popTrace()
+
+		param.AddID(t.GetLexeme())
 	}
 
-	return p.Prms()
+	head.AddParam(param)
+
+	return p.Prms(head)
 }
 
 // <BODY> ::= id '(' <CALL> <BODY> |
 //            'iter' <ITER> <BODY> |
 //            '{' <BODY> '}' |
 //            <Empty>
-func (p *Parser) Body() error {
+func (p *Parser) Body(body *Body) error {
+	// maybe this function should be divided in 2, one for the statements and the other for the body
 	p.pushTrace("Body")
 	defer p.popTrace()
 
@@ -295,11 +329,20 @@ func (p *Parser) Body() error {
 		return err
 	}
 
+	//p.stkEnv.PushEnv()
+	//defer p.stkEnv.PopEnv()
+
+	//b = &fxsym.Body{}
+
+	stm := NewStatement()
+
 	switch t.GetTokType() {
 	case fxlex.TokID:
-		t, err = p.l.Lex()
-		p.pushTrace(fmt.Sprintf("ID %s", t))
+		tokID, err := p.l.Lex()
+		p.pushTrace(fmt.Sprintf("ID %s", tokID))
 		p.popTrace()
+
+		call := NewCall(tokID.GetLexeme())
 
 		t, isLPar, err := p.match(fxlex.TokLPar)
 		if err != nil {
@@ -316,11 +359,11 @@ func (p *Parser) Body() error {
 			p.popTrace()
 		}
 
-		if err := p.Call(); err != nil {
+		if err := p.Call(call); err != nil {
 			return err
 		}
 
-		return p.Body()
+		stm.AddCall(call)
 	case fxlex.TokKey:
 		t, err = p.l.Lex()
 
@@ -329,11 +372,12 @@ func (p *Parser) Body() error {
 			p.pushTrace(fmt.Sprintf("Key %s", t))
 			p.popTrace()
 
-			if err := p.Iter(); err != nil {
+			iter := NewIter()
+			if err := p.Iter(iter); err != nil {
 				return err
 			}
 
-			return p.Body()
+			stm.AddIter(iter)
 		default:
 			p.errorf("%s:%d: syntax error: keyword unexpected",
 				p.l.GetFilename(), p.l.GetLineNumber())
@@ -348,7 +392,8 @@ func (p *Parser) Body() error {
 		p.pushTrace(fmt.Sprintf("%s", t))
 		p.popTrace()
 
-		if err := p.Body(); err != nil {
+		inner_body := NewBody()
+		if err := p.Body(inner_body); err != nil {
 			return err
 		}
 
@@ -364,24 +409,31 @@ func (p *Parser) Body() error {
 			p.pushTrace(fmt.Sprintf("%s", t))
 			p.popTrace()
 		}
+
+		stm.AddBody(inner_body)
 	default:
 		return err
 	}
 
-	return err
+	body.AddStm(stm)
+
+	return p.Body(body)
 }
 
 // <CALL> ::= ')' ';' |
 //            <ARGS_LIST> ')' ';'
-func (p *Parser) Call() error {
+func (p *Parser) Call(call *Call) error {
 	p.pushTrace("Call")
 	defer p.popTrace()
+
+	//call = &fxsym.Call{ID: id}
 
 	t, isRPar, err := p.match(fxlex.TokRPar)
 	if err != nil {
 		return err
 	} else if !isRPar {
-		if err := p.ArgsList(); err != nil {
+		err := p.ArgsList(call)
+		if err != nil {
 			return err
 		}
 
@@ -421,20 +473,22 @@ func (p *Parser) Call() error {
 }
 
 // <ARGS_LIST> ::= <EXPR> <ARGS>
-func (p *Parser) ArgsList() error {
+func (p *Parser) ArgsList(call *Call) error {
 	p.pushTrace("ArgsList")
 	defer p.popTrace()
 
-	if err := p.Expr(); err != nil {
+	arg, err := p.Expr()
+	if err != nil {
 		return err
 	}
+	call.AddArg(arg)
 
-	return p.Args()
+	return p.Args(call)
 }
 
 // <ARGS> ::= ',' <EXPR> <ARGS>
 //            <Empty>
-func (p *Parser) Args() error {
+func (p *Parser) Args(call *Call) error {
 	p.pushTrace("Args")
 	defer p.popTrace()
 
@@ -446,15 +500,17 @@ func (p *Parser) Args() error {
 		p.popTrace()
 	}
 
-	if err := p.Expr(); err != nil {
+	arg, err := p.Expr()
+	if err != nil {
 		return err
 	}
+	call.AddArg(arg)
 
-	return p.Args()
+	return p.Args(call)
 }
 
 // <ITER> ::= '(' id ':=' <EXPR> ',' <EXPR> ',' <EXPR> ')' '{' <BODY> '}'
-func (p *Parser) Iter() error {
+func (p *Parser) Iter(iter *Iter) error {
 	p.pushTrace("Iter")
 	defer p.popTrace()
 
@@ -473,6 +529,11 @@ func (p *Parser) Iter() error {
 		p.popTrace()
 	}
 
+	//p.stkEnv.PushEnv()
+	//defer p.stkEnv.PopEnv()
+
+	//iter = &fxsym.Iter{}
+
 	t, isID, err := p.match(fxlex.TokID)
 	if err != nil {
 		return err
@@ -486,7 +547,19 @@ func (p *Parser) Iter() error {
 	} else {
 		p.pushTrace(fmt.Sprintf("ID %s", t))
 		p.popTrace()
+
+		varControl := NewVar()
+		varControl.AddID(t.GetLexeme())
+		varControl.AddVarType(fxlex.TokID)
+
+		iter.AddVarControl(varControl)
 	}
+
+	/*start, err := p.stkEnv.NewSym(t.GetLexeme(), fxsym.SVar)
+	if err != nil {
+		return nil, err
+	}
+	start.Decl = &fxsym.Decl{ID: t.GetLexeme()}*/
 
 	t, isDeclaration, err := p.match(fxlex.Declaration)
 	if err != nil {
@@ -503,9 +576,15 @@ func (p *Parser) Iter() error {
 		p.popTrace()
 	}
 
-	if err := p.Expr(); err != nil {
+	e, err := p.Expr()
+	if err != nil {
 		return err
 	}
+
+	iter.AddStart(e)
+
+	//start.Decl.Val = e
+	//iter.Start = start
 
 	t, isComma, err := p.match(fxlex.TokComma)
 	if err != nil {
@@ -522,9 +601,13 @@ func (p *Parser) Iter() error {
 		p.popTrace()
 	}
 
-	if err := p.Expr(); err != nil {
+	e, err = p.Expr()
+	if err != nil {
 		return err
 	}
+
+	iter.AddEnd(e)
+	//iter.End = e
 
 	t, isComma, err = p.match(fxlex.TokComma)
 	if err != nil {
@@ -541,9 +624,13 @@ func (p *Parser) Iter() error {
 		p.popTrace()
 	}
 
-	if err := p.Expr(); err != nil {
+	e, err = p.Expr()
+	if err != nil {
 		return err
 	}
+
+	iter.AddStep(e)
+	//iter.Step = e
 
 	t, isRPar, err := p.match(fxlex.TokRPar)
 	if err != nil {
@@ -575,7 +662,7 @@ func (p *Parser) Iter() error {
 		p.popTrace()
 	}
 
-	if err := p.Body(); err != nil {
+	if err = p.Body(iter.Body()); err != nil {
 		return err
 	}
 
@@ -598,42 +685,69 @@ func (p *Parser) Iter() error {
 }
 
 // <EXPR> ::= <ATOM>
-func (p *Parser) Expr() error {
+func (p *Parser) Expr() (e *Expr, err error) {
 	p.pushTrace("Expr")
 	defer p.popTrace()
 
-	return p.Atom()
+	tok, err := p.Atom()
+	if err != nil {
+		return nil, err
+	}
+
+	return NewExpr(tok), nil
 }
 
 // <ATOM> ::= id |
 //						num |
 //						bool
-func (p *Parser) Atom() error {
+//func (p *Parser) Atom() (s *fxsym.Sym, err error) {
+func (p *Parser) Atom() (t fxlex.Token, err error) {
 	p.pushTrace("Atom")
 	defer p.popTrace()
 
-	t, err := p.l.Peek()
+	t, err = p.l.Peek()
 	if err != nil {
-		return err
+		return t, err
 	}
 
 	switch t.GetTokType() {
 	case fxlex.TokID:
 		t, err = p.l.Lex()
+		if err != nil {
+			return t, err
+		}
+
 		p.pushTrace(fmt.Sprintf("ID %s", t))
 		defer p.popTrace()
+
+		/*s = p.stkEnv.GetSym(t.GetLexeme())
+		if s == nil {
+			return nil, errors.New("ID not found: " + t.GetLexeme())
+		}*/
 	case fxlex.TokIntLit:
 		t, err = p.l.Lex()
+		if err != nil {
+			return t, err
+		}
+
 		p.pushTrace(fmt.Sprintf("Num %s", t))
 		defer p.popTrace()
+
+		//s = &fxsym.Sym{IntVal: t.GetValue()}
 	case fxlex.TokBoolLit:
 		t, err = p.l.Lex()
+		if err != nil {
+			return t, err
+		}
+
 		p.pushTrace(fmt.Sprintf("Bool %s", t))
 		defer p.popTrace()
+
+		//s = &fxsym.Sym{BoolVal: t.GetValue() != 0}
 	default:
 		p.errorf("%s:%d: syntax error: expected id, number or bool, found %s",
 			p.l.GetFilename(), p.l.GetLineNumber(), t.GetTokType())
 	}
 
-	return err
+	return t, err
 }
