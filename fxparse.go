@@ -37,7 +37,10 @@ func (p *Parser) Parse() error {
 	if err := p.Prog(prog); err != nil {
 		return err
 	}
-	fmt.Print(prog)
+
+	if p.nErr == 0 {
+		fmt.Println(prog)
+	}
 
 	return nil
 }

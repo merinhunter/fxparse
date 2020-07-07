@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const nullString = "nil"
+
 type Prog struct {
 	funcs []*Func
 	depth int
@@ -26,14 +28,14 @@ func (p *Prog) AddFunc(f *Func) {
 
 func (p *Prog) String() string {
 	if p == nil {
-		return "nil"
+		return nullString
 	}
 
 	tabs := strings.Repeat("\t", p.depth)
-	output := fmt.Sprintf("%s%p PROG\n", tabs, p)
+	output := fmt.Sprintf("%s%p PROG", tabs, p)
 	for _, value := range p.funcs {
 		value.depth = p.depth + 1
-		output += fmt.Sprintf("%s\n", value)
+		output += fmt.Sprintf("\n%s", value)
 	}
 
 	return output
@@ -63,7 +65,7 @@ func (f *Func) Body() *Body {
 
 func (f *Func) String() string {
 	if f == nil {
-		return "nil"
+		return nullString
 	}
 
 	tabs := strings.Repeat("\t", f.depth)
@@ -73,7 +75,7 @@ func (f *Func) String() string {
 	output += fmt.Sprintf("%s\n", f.head)
 	// Body
 	f.body.depth = f.depth + 1
-	output += fmt.Sprintf("%s\n", f.body)
+	output += fmt.Sprintf("%s", f.body)
 
 	return output
 }
@@ -102,14 +104,14 @@ func (h *Head) AddParam(param *Var) {
 
 func (h *Head) String() string {
 	if h == nil {
-		return "nil"
+		return nullString
 	}
 
 	tabs := strings.Repeat("\t", h.depth)
-	output := fmt.Sprintf("%s%p HEAD(%s)\n", tabs, h, h.id)
+	output := fmt.Sprintf("%s%p HEAD(%s)", tabs, h, h.id)
 	for _, value := range h.params {
 		value.depth = h.depth + 1
-		output += fmt.Sprintf("%s\n", value)
+		output += fmt.Sprintf("\n%s", value)
 	}
 
 	return output
@@ -137,7 +139,7 @@ func (v *Var) AddVarType(varType int) {
 
 func (v *Var) String() string {
 	if v == nil {
-		return "nil"
+		return nullString
 	}
 
 	tabs := strings.Repeat("\t", v.depth)
@@ -145,8 +147,8 @@ func (v *Var) String() string {
 }
 
 type Body struct {
-	depth int
 	stms  []*Statement
+	depth int
 }
 
 func NewBody() (body *Body) {
@@ -164,14 +166,14 @@ func (b *Body) AddStm(stm *Statement) {
 
 func (b *Body) String() string {
 	if b == nil {
-		return "nil"
+		return nullString
 	}
 
 	tabs := strings.Repeat("\t", b.depth)
-	output := fmt.Sprintf("%s%p BODY\n", tabs, b)
+	output := fmt.Sprintf("%s%p BODY", tabs, b)
 	for _, value := range b.stms {
 		value.depth = b.depth + 1
-		output += fmt.Sprintf("%s\n", value)
+		output += fmt.Sprintf("\n%s", value)
 	}
 
 	return output
@@ -213,7 +215,7 @@ func (stm *Statement) AddBody(body *Body) {
 
 func (stm *Statement) String() string {
 	if stm == nil {
-		return "nil"
+		return nullString
 	}
 
 	if stm.call != nil {
@@ -227,7 +229,7 @@ func (stm *Statement) String() string {
 		return fmt.Sprintf("%s", stm.body)
 	}
 
-	return "nil"
+	return nullString
 }
 
 type Call struct {
@@ -252,14 +254,14 @@ func (c *Call) AddArg(arg *Expr) {
 
 func (c *Call) String() string {
 	if c == nil {
-		return "nil"
+		return nullString
 	}
 
 	tabs := strings.Repeat("\t", c.depth)
-	output := fmt.Sprintf("%s%p CALL(%s)\n", tabs, c, c.id)
+	output := fmt.Sprintf("%s%p CALL(%s)", tabs, c, c.id)
 	for _, value := range c.args {
 		value.depth = c.depth + 1
-		output += fmt.Sprintf("%s\n", value)
+		output += fmt.Sprintf("\n%s", value)
 	}
 
 	return output
@@ -317,7 +319,7 @@ func (iter *Iter) Body() *Body {
 
 func (iter *Iter) String() string {
 	if iter == nil {
-		return "nil"
+		return nullString
 	}
 
 	tabs := strings.Repeat("\t", iter.depth)
@@ -336,7 +338,7 @@ func (iter *Iter) String() string {
 	output += fmt.Sprintf("%s\n", iter.step)
 	// Body
 	iter.body.depth = iter.depth + 1
-	output += fmt.Sprintf("%s\n", iter.body)
+	output += fmt.Sprintf("%s", iter.body)
 
 	return output
 }
@@ -355,7 +357,7 @@ func NewExpr(tok fxlex.Token) (expr *Expr) {
 
 func (e *Expr) String() string {
 	if e == nil {
-		return "nil"
+		return nullString
 	}
 
 	tabs := strings.Repeat("\t", e.depth)
