@@ -2,14 +2,28 @@ package fxparse
 
 import (
 	"fmt"
-	"fxlex"
+	"fxsym"
 	"strings"
 )
 
 const nullString = "nil"
 
+/*type TreeSym fxsym.Sym
+
+func (s *TreeSym) Content() interface{} {
+	return s.Content()
+}
+
+func (s *TreeSym) GetFunc() (f *Func, err error) {
+	if f, ok := s.Content().(*Func); ok {
+		return f, nil
+	} else {
+		return nil, errors.New("cast to Func failed")
+	}
+}*/
+
 type Prog struct {
-	funcs []*Func
+	funcs []*fxsym.Sym
 	depth int
 }
 
@@ -20,7 +34,7 @@ func NewProg() (prog *Prog) {
 	return prog
 }
 
-func (p *Prog) AddFunc(f *Func) {
+func (p *Prog) AddFunc(f *fxsym.Sym) {
 	if f != nil {
 		p.funcs = append(p.funcs, f)
 	}
@@ -34,8 +48,10 @@ func (p *Prog) String() string {
 	tabs := strings.Repeat("\t", p.depth)
 	output := fmt.Sprintf("%s%p PROG", tabs, p)
 	for _, value := range p.funcs {
-		value.depth = p.depth + 1
+		value.SetDepth(p.depth + 1)
 		output += fmt.Sprintf("\n%s", value)
+		value.Content().(*Func).depth = p.depth + 2
+		output += fmt.Sprintf("\n%s", value.Content())
 	}
 
 	return output
@@ -53,14 +69,6 @@ func NewFunc() (f *Func) {
 	f.body = NewBody()
 
 	return f
-}
-
-func (f *Func) Head() *Head {
-	return f.head
-}
-
-func (f *Func) Body() *Body {
-	return f.body
 }
 
 func (f *Func) String() string {
@@ -82,7 +90,7 @@ func (f *Func) String() string {
 
 type Head struct {
 	id     string
-	params []*Var
+	params []*fxsym.Sym
 	depth  int
 }
 
@@ -92,11 +100,7 @@ func NewHead() (head *Head) {
 	return head
 }
 
-func (h *Head) AddID(id string) {
-	h.id = id
-}
-
-func (h *Head) AddParam(param *Var) {
+func (h *Head) AddParam(param *fxsym.Sym) {
 	if param != nil {
 		h.params = append(h.params, param)
 	}
@@ -110,40 +114,11 @@ func (h *Head) String() string {
 	tabs := strings.Repeat("\t", h.depth)
 	output := fmt.Sprintf("%s%p HEAD(%s)", tabs, h, h.id)
 	for _, value := range h.params {
-		value.depth = h.depth + 1
+		value.SetDepth(h.depth + 1)
 		output += fmt.Sprintf("\n%s", value)
 	}
 
 	return output
-}
-
-type Var struct {
-	id      string
-	varType int
-	depth   int
-}
-
-func NewVar() (v *Var) {
-	v = &Var{depth: 0}
-
-	return v
-}
-
-func (v *Var) AddID(id string) {
-	v.id = id
-}
-
-func (v *Var) AddVarType(varType int) {
-	v.varType = varType
-}
-
-func (v *Var) String() string {
-	if v == nil {
-		return nullString
-	}
-
-	tabs := strings.Repeat("\t", v.depth)
-	return fmt.Sprintf("%s%p VAR[%d](%s)", tabs, v, v.varType, v.id)
 }
 
 type Body struct {
@@ -180,9 +155,11 @@ func (b *Body) String() string {
 }
 
 type Statement struct {
-	call  *Call
-	iter  *Iter
-	body  *Body
+	// One of these
+	call *Call
+	iter *Iter
+	body *Body
+	//decl  *fxsym.Sym
 	depth int
 }
 
@@ -233,17 +210,23 @@ func (stm *Statement) String() string {
 }
 
 type Call struct {
-	id    string
+	f     *fxsym.Sym
 	args  []*Expr
 	depth int
 }
 
-func NewCall(id string) (call *Call) {
+func NewCall() (call *Call) {
 	call = &Call{depth: 0}
-	call.id = id
+	call.f = nil
 	call.args = nil
 
 	return call
+}
+
+func (c *Call) AddFunc(f *fxsym.Sym) {
+	if f != nil {
+		c.f = f
+	}
 }
 
 func (c *Call) AddArg(arg *Expr) {
@@ -258,7 +241,11 @@ func (c *Call) String() string {
 	}
 
 	tabs := strings.Repeat("\t", c.depth)
-	output := fmt.Sprintf("%s%p CALL(%s)", tabs, c, c.id)
+	output := fmt.Sprintf("%s%p CALL", tabs, c)
+	// Func
+	c.f.SetDepth(c.depth + 1)
+	output += fmt.Sprintf("\n%s", c.f)
+	// Args
 	for _, value := range c.args {
 		value.depth = c.depth + 1
 		output += fmt.Sprintf("\n%s", value)
@@ -268,7 +255,7 @@ func (c *Call) String() string {
 }
 
 type Iter struct {
-	varControl *Var
+	varControl *fxsym.Sym
 	start      *Expr
 	end        *Expr
 	step       *Expr
@@ -283,7 +270,7 @@ func NewIter() (iter *Iter) {
 	return iter
 }
 
-func (iter *Iter) AddVarControl(v *Var) {
+func (iter *Iter) AddVarControl(v *fxsym.Sym) {
 	if v != nil {
 		iter.varControl = v
 	}
@@ -313,10 +300,6 @@ func (iter *Iter) AddBody(b *Body) {
 	}
 }
 
-func (iter *Iter) Body() *Body {
-	return iter.body
-}
-
 func (iter *Iter) String() string {
 	if iter == nil {
 		return nullString
@@ -325,7 +308,7 @@ func (iter *Iter) String() string {
 	tabs := strings.Repeat("\t", iter.depth)
 	output := fmt.Sprintf("%s%p ITER\n", tabs, iter)
 	// Control variable
-	iter.varControl.depth = iter.depth + 1
+	iter.varControl.SetDepth(iter.depth + 1)
 	output += fmt.Sprintf("%s\n", iter.varControl)
 	// Start
 	iter.start.depth = iter.depth + 1
@@ -344,13 +327,15 @@ func (iter *Iter) String() string {
 }
 
 type Expr struct {
-	tok   fxlex.Token
+	atom  *fxsym.Sym
 	depth int
 }
 
-func NewExpr(tok fxlex.Token) (expr *Expr) {
+func NewExpr(sTok *fxsym.Sym) (expr *Expr) {
 	expr = &Expr{depth: 0}
-	expr.tok = tok
+	if sTok != nil {
+		expr.atom = sTok
+	}
 
 	return expr
 }
@@ -361,13 +346,10 @@ func (e *Expr) String() string {
 	}
 
 	tabs := strings.Repeat("\t", e.depth)
-	output := fmt.Sprintf("%s%p EXPR[%s]", tabs, e, e.tok.GetType())
-
-	if e.tok.GetTokType() == fxlex.TokID {
-		output += fmt.Sprintf("(%s)", e.tok.GetLexeme())
-	} else {
-		output += fmt.Sprintf("(%d)", e.tok.GetValue())
-	}
+	output := fmt.Sprintf("%s%p EXPR", tabs, e)
+	// Atom
+	e.atom.SetDepth(e.depth + 1)
+	output += fmt.Sprintf("\n%s", e.atom)
 
 	return output
 }

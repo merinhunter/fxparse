@@ -27,7 +27,7 @@ var exampleFile = `//basic types bool, int (64 bits), Coord(int x, int y)
 
 //macro definition
 func line(int x, int y){
-	iter (i := 0, x, 1){	//declares de variable only in the loop
+	iter (i := 0, x, 1){	//declares the variable only in the loop
 		circle(2, 3, y, 5);
 	}
 }
@@ -37,7 +37,7 @@ func main(){
   iter (i := 0, 3, 1){
     rect(i, i, 3, 0xff);
   }
-  iter(j := 0, 8, 2){ // loops 0 2 4 6 8
+  iter (j := 0, 8, 2){ // loops 0 2 4 6 8
     rect(j, j, 8, 0xff);
   }
   circle(4, 5, 2, 0x11000011);
@@ -57,8 +57,8 @@ func newTestParser(t *testing.T, text string) (p *Parser) {
 
 func TestParse(t *testing.T) {
 	p := newTestParser(t, exampleFile)
-	DebugParser = true
-	fxlex.DebugLexer = true
+	DebugParser = false
+	fxlex.DebugLexer = false
 
 	if err := p.Parse(); err != nil {
 		t.Errorf("TestParse failed")
