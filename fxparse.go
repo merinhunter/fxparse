@@ -46,6 +46,12 @@ func (p *Parser) Parse() error {
 }
 
 func (p *Parser) initSyms() error {
+	p.defBuiltins()
+	p.defTypes()
+	return nil
+}
+
+func (p *Parser) defBuiltins() error {
 	for name, builtin := range builtins {
 		f := NewFunc()
 		f.head.id = builtin.name
@@ -69,6 +75,20 @@ func (p *Parser) initSyms() error {
 		fSym.AddTokKind(builtin.kind)
 		fSym.AddPlace("builtin", 0)
 		fSym.AddContent(f)
+	}
+
+	return nil
+}
+
+func (p *Parser) defTypes() error {
+	for _, tp := range Types {
+		tSym, err := p.stkEnv.NewSym(tp.String(), fxsym.SType)
+		if err != nil {
+			return err
+		}
+		tSym.AddTokKind(fxlex.TokID)
+		tSym.AddPlace("builtin", 0)
+		tSym.AddContent(tp)
 	}
 
 	return nil
@@ -279,6 +299,16 @@ func (p *Parser) FormalPrms(head *Head) error {
 	p.pushTrace(fmt.Sprintf("TypeID %s", tokType))
 	p.popTrace()
 
+	tSym := p.stkEnv.GetSym(tokType.GetLexeme())
+	if tSym == nil {
+		p.errorf("%s:%d: syntax error: type %s not found",
+			p.l.GetFilename(), p.l.GetLineNumber(), tokType.GetLexeme())
+	} else if tSym.SymType() != "SType" {
+		p.errorf("%s:%d: syntax error: expecting type, found %s",
+			p.l.GetFilename(), p.l.GetLineNumber(), tokType.GetLexeme())
+		tSym = nil
+	}
+
 	tokID, isID, err := p.match(fxlex.TokID)
 	if err != nil {
 		return err
@@ -301,6 +331,9 @@ func (p *Parser) FormalPrms(head *Head) error {
 	} else {
 		vSym.AddTokKind(tokType.GetTokType())
 		vSym.AddPlace(p.l.GetFilename(), p.l.GetLineNumber())
+		if tSym != nil {
+			vSym.SetType(tSym.Content().(*Type).id)
+		}
 	}
 
 	head.AddParam(vSym)
@@ -337,6 +370,16 @@ func (p *Parser) Prms(head *Head) error {
 		p.popTrace()
 	}
 
+	tSym := p.stkEnv.GetSym(tokType.GetLexeme())
+	if tSym == nil {
+		p.errorf("%s:%d: syntax error: type %s not found",
+			p.l.GetFilename(), p.l.GetLineNumber(), tokType.GetLexeme())
+	} else if tSym.SymType() != "SType" {
+		p.errorf("%s:%d: syntax error: expecting type, found %s",
+			p.l.GetFilename(), p.l.GetLineNumber(), tokType.GetLexeme())
+		tSym = nil
+	}
+
 	tokID, isID, err := p.match(fxlex.TokID)
 	if err != nil {
 		return err
@@ -359,6 +402,9 @@ func (p *Parser) Prms(head *Head) error {
 	} else {
 		vSym.AddTokKind(tokType.GetTokType())
 		vSym.AddPlace(p.l.GetFilename(), p.l.GetLineNumber())
+		if tSym != nil {
+			vSym.SetType(tSym.Content().(*Type).id)
+		}
 	}
 
 	head.AddParam(vSym)
@@ -368,10 +414,10 @@ func (p *Parser) Prms(head *Head) error {
 
 // <BODY> ::= id '(' <CALL> <BODY> |
 //            'iter' <ITER> <BODY> |
+//            type_id id ; <BODY> |
 //            '{' <BODY> '}' |
 //            <Empty>
 func (p *Parser) Body(body *Body) error {
-	// maybe this function should be divided in 2, one for the statements and the other for the body
 	p.pushTrace("Body")
 	defer p.popTrace()
 
@@ -387,39 +433,86 @@ func (p *Parser) Body(body *Body) error {
 
 	switch t.GetTokType() {
 	case fxlex.TokID:
-		tokID, err := p.l.Lex()
+		tokID, _ := p.l.Lex()
 		p.pushTrace(fmt.Sprintf("ID %s", tokID))
 		p.popTrace()
 
-		fSym := p.stkEnv.GetSym(tokID.GetLexeme())
-		if fSym == nil {
+		sym := p.stkEnv.GetSym(tokID.GetLexeme())
+		if sym == nil {
 			p.errorf("%s:%d: syntax error: symbol %s not found",
 				p.l.GetFilename(), p.l.GetLineNumber(), tokID.GetLexeme())
 		}
 
-		call := NewCall()
-		call.AddFunc(fSym)
+		switch sym.SymType() {
+		case "SFunc":
+			call := NewCall()
+			call.AddFunc(sym)
 
-		t, isLPar, err := p.match(fxlex.TokLPar)
-		if err != nil {
-			return err
-		} else if !isLPar {
-			p.errorf("%s:%d: syntax error: bad statement",
-				p.l.GetFilename(), p.l.GetLineNumber())
-			err = p.l.SkipUntil(fxlex.TokRPar, fxlex.TokComma, fxlex.Semicolon)
+			t, isLPar, err := p.match(fxlex.TokLPar)
 			if err != nil {
 				return err
+			} else if !isLPar {
+				p.errorf("%s:%d: syntax error: bad statement",
+					p.l.GetFilename(), p.l.GetLineNumber())
+				err = p.l.SkipUntil(fxlex.TokRPar, fxlex.TokComma, fxlex.Semicolon)
+				if err != nil {
+					return err
+				}
+			} else {
+				p.pushTrace(fmt.Sprintf("%s", t))
+				p.popTrace()
 			}
-		} else {
-			p.pushTrace(fmt.Sprintf("%s", t))
-			p.popTrace()
-		}
 
-		if err := p.Call(call); err != nil {
-			return err
-		}
+			if err := p.Call(call); err != nil {
+				return err
+			}
 
-		stm.AddCall(call)
+			stm.AddCall(call)
+		case "SType":
+			tokID, isID, err := p.match(fxlex.TokID)
+			if err != nil {
+				return err
+			} else if !isID {
+				p.errorf("%s:%d: syntax error: bad statement",
+					p.l.GetFilename(), p.l.GetLineNumber())
+				err = p.l.SkipUntil(fxlex.Semicolon)
+				if err != nil {
+					return err
+				}
+			} else {
+				p.pushTrace(fmt.Sprintf("ID %s", tokID))
+				p.popTrace()
+			}
+
+			vSym, err := p.stkEnv.NewSym(tokID.GetLexeme(), fxsym.SVar)
+			if err != nil {
+				p.errorf("%s:%d: syntax error: %s (%s)",
+					p.l.GetFilename(), p.l.GetLineNumber(), err, tokID.GetLexeme())
+			} else {
+				if sym != nil {
+					vSym.SetType(sym.Content().(*Type).id)
+				}
+				vSym.AddPlace(p.l.GetFilename(), p.l.GetLineNumber())
+			}
+
+			t, isSemicolon, err := p.match(fxlex.Semicolon)
+			if err != nil {
+				return err
+			} else if !isSemicolon {
+				p.errorf("%s:%d: syntax error: bad statement",
+					p.l.GetFilename(), p.l.GetLineNumber())
+				err = p.l.SkipUntilAndLex(fxlex.Semicolon)
+				return err
+			} else {
+				p.pushTrace(fmt.Sprintf("%s", t))
+				p.popTrace()
+			}
+
+			stm.AddDecl(vSym)
+		default:
+			p.errorf("%s:%d: syntax error: symbol %s not expected",
+				p.l.GetFilename(), p.l.GetLineNumber(), tokID.GetLexeme())
+		}
 	case fxlex.TokKey:
 		t, err = p.l.Lex()
 
@@ -608,6 +701,7 @@ func (p *Parser) Iter(iter *Iter) error {
 	} else {
 		varControl.AddTokKind(t.GetTokType())
 		varControl.AddPlace(p.l.GetFilename(), p.l.GetLineNumber())
+		varControl.SetType(Types[TInt].id)
 	}
 
 	iter.AddVarControl(varControl)

@@ -156,10 +156,10 @@ func (b *Body) String() string {
 
 type Statement struct {
 	// One of these
-	call *Call
-	iter *Iter
-	body *Body
-	//decl  *fxsym.Sym
+	call  *Call
+	iter  *Iter
+	body  *Body
+	decl  *fxsym.Sym
 	depth int
 }
 
@@ -168,6 +168,7 @@ func NewStatement() (stm *Statement) {
 	stm.call = nil
 	stm.iter = nil
 	stm.body = nil
+	stm.decl = nil
 
 	return stm
 }
@@ -190,6 +191,12 @@ func (stm *Statement) AddBody(body *Body) {
 	}
 }
 
+func (stm *Statement) AddDecl(decl *fxsym.Sym) {
+	if decl != nil {
+		stm.decl = decl
+	}
+}
+
 func (stm *Statement) String() string {
 	if stm == nil {
 		return nullString
@@ -204,6 +211,9 @@ func (stm *Statement) String() string {
 	} else if stm.body != nil {
 		stm.body.depth = stm.depth
 		return fmt.Sprintf("%s", stm.body)
+	} else if stm.decl != nil {
+		stm.decl.SetDepth(stm.depth)
+		return fmt.Sprintf("%s", stm.decl)
 	}
 
 	return nullString

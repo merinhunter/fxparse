@@ -34,6 +34,8 @@ func line(int x, int y){
 
 //macro entry
 func main(){
+  int k;
+
   iter (i := 0, 3, 1){
     rect(i, i, 3, 0xff);
   }
