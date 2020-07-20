@@ -157,12 +157,13 @@ func (b *Body) String() string {
 
 type Statement struct {
 	// One of these
-	call  *Call
-	iter  *Iter
-	body  *Body
-	decl  *fxsym.Sym
-	asign *Asign
-	depth int
+	call   *Call
+	iter   *Iter
+	body   *Body
+	decl   *fxsym.Sym
+	asign  *Asign
+	nodeIf *NodeIf
+	depth  int
 }
 
 func NewStatement() (stm *Statement) {
@@ -172,6 +173,7 @@ func NewStatement() (stm *Statement) {
 	stm.body = nil
 	stm.decl = nil
 	stm.asign = nil
+	stm.nodeIf = nil
 
 	return stm
 }
@@ -206,6 +208,12 @@ func (stm *Statement) AddAsign(asign *Asign) {
 	}
 }
 
+func (stm *Statement) AddNodeIf(nodeIf *NodeIf) {
+	if nodeIf != nil {
+		stm.nodeIf = nodeIf
+	}
+}
+
 func (stm *Statement) String() string {
 	if stm == nil {
 		return nullString
@@ -226,6 +234,9 @@ func (stm *Statement) String() string {
 	} else if stm.asign != nil {
 		stm.asign.depth = stm.depth
 		return fmt.Sprintf("%s", stm.asign)
+	} else if stm.nodeIf != nil {
+		stm.nodeIf.depth = stm.depth
+		return fmt.Sprintf("%s", stm.nodeIf)
 	}
 
 	return nullString
@@ -387,6 +398,64 @@ func (asign *Asign) String() string {
 	// Value
 	asign.value.depth = asign.depth + 1
 	output += fmt.Sprintf("\n%s", asign.value)
+
+	return output
+}
+
+type NodeIf struct {
+	cond     *Expr
+	body     *Body
+	bodyElse *Body
+	depth    int
+}
+
+func NewNodeIf() (nodeIf *NodeIf) {
+	nodeIf = &NodeIf{depth: 0}
+	nodeIf.cond = nil
+	nodeIf.body = NewBody()
+	nodeIf.bodyElse = nil
+
+	return nodeIf
+}
+
+func (nodeIf *NodeIf) AddCond(e *Expr) {
+	if e != nil {
+		nodeIf.cond = e
+	}
+}
+
+func (nodeIf *NodeIf) AddBody(b *Body) {
+	if b != nil {
+		nodeIf.body = b
+	}
+}
+
+func (nodeIf *NodeIf) AddBodyElse(b *Body) {
+	if b != nil {
+		nodeIf.bodyElse = b
+	}
+}
+
+func (nodeIf *NodeIf) String() string {
+	if nodeIf == nil {
+		return nullString
+	}
+
+	tabs := strings.Repeat("\t", nodeIf.depth)
+	output := fmt.Sprintf("%s%p IF\n", tabs, nodeIf)
+	// Condition
+	nodeIf.cond.depth = nodeIf.depth + 1
+	output += fmt.Sprintf("%s\n", nodeIf.cond)
+	// Body
+	nodeIf.body.depth = nodeIf.depth + 1
+	output += fmt.Sprintf("%s", nodeIf.body)
+	// Else
+	if nodeIf.bodyElse != nil {
+		output += fmt.Sprintf("\n%s%p ELSE\n", tabs, nodeIf)
+		// Body Else
+		nodeIf.bodyElse.depth = nodeIf.depth + 1
+		output += fmt.Sprintf("%s", nodeIf.bodyElse)
+	}
 
 	return output
 }

@@ -567,6 +567,16 @@ func (p *Parser) Body(body *Body) error {
 			}
 
 			stm.AddIter(iter)
+		case "if":
+			p.pushTrace(fmt.Sprintf("Key %s", t))
+			p.popTrace()
+
+			nodeIf := NewNodeIf()
+			if err := p.NodeIf(nodeIf); err != nil {
+				return err
+			}
+
+			stm.AddNodeIf(nodeIf)
 		default:
 			p.errorf("%s:%d: syntax error: keyword unexpected",
 				p.l.GetFilename(), p.l.GetLineNumber())
@@ -851,6 +861,136 @@ func (p *Parser) Iter(iter *Iter) error {
 		return err
 	} else if !isRCurl {
 		p.errorf("%s:%d: syntax error: iter (bad statement)",
+			p.l.GetFilename(), p.l.GetLineNumber())
+		err = p.l.SkipUntilAndLex(fxlex.TokRCurl)
+		if err != nil {
+			return err
+		}
+	} else {
+		p.pushTrace(fmt.Sprintf("%s", t))
+		p.popTrace()
+	}
+
+	return err
+}
+
+// <IF> ::= '(' <EXPR> ')' '{' <BODY> '}' <ELSE>
+func (p *Parser) NodeIf(nodeIf *NodeIf) error {
+	p.pushTrace("If")
+	defer p.popTrace()
+
+	t, isLPar, err := p.match(fxlex.TokLPar)
+	if err != nil {
+		return err
+	} else if !isLPar {
+		p.errorf("%s:%d: syntax error: if (bad statement)",
+			p.l.GetFilename(), p.l.GetLineNumber())
+		err = p.l.SkipUntil(fxlex.TokLCurl, fxlex.TokRCurl, fxlex.TokRPar)
+		if err != nil {
+			return err
+		}
+	} else {
+		p.pushTrace(fmt.Sprintf("%s", t))
+		p.popTrace()
+	}
+
+	e, err := p.Expr(defRbp - 1)
+	if err != nil {
+		return err
+	}
+
+	nodeIf.AddCond(e)
+
+	t, isRPar, err := p.match(fxlex.TokRPar)
+	if err != nil {
+		return err
+	} else if !isRPar {
+		p.errorf("%s:%d: syntax error: if (bad statement)",
+			p.l.GetFilename(), p.l.GetLineNumber())
+		err = p.l.SkipUntil(fxlex.TokLCurl, fxlex.TokRCurl)
+		if err != nil {
+			return err
+		}
+	} else {
+		p.pushTrace(fmt.Sprintf("%s", t))
+		p.popTrace()
+	}
+
+	t, isLCurl, err := p.match(fxlex.TokLCurl)
+	if err != nil {
+		return err
+	} else if !isLCurl {
+		p.errorf("%s:%d: syntax error: if (bad statement)",
+			p.l.GetFilename(), p.l.GetLineNumber())
+		err = p.l.SkipUntil(fxlex.TokRCurl)
+		if err != nil {
+			return err
+		}
+	} else {
+		p.pushTrace(fmt.Sprintf("%s", t))
+		p.popTrace()
+	}
+
+	if err = p.Body(nodeIf.body); err != nil {
+		return err
+	}
+
+	t, isRCurl, err := p.match(fxlex.TokRCurl)
+	if err != nil {
+		return err
+	} else if !isRCurl {
+		p.errorf("%s:%d: syntax error: if (bad statement)",
+			p.l.GetFilename(), p.l.GetLineNumber())
+		err = p.l.SkipUntilAndLex(fxlex.TokRCurl)
+		if err != nil {
+			return err
+		}
+	} else {
+		p.pushTrace(fmt.Sprintf("%s", t))
+		p.popTrace()
+	}
+
+	return p.Else(nodeIf)
+}
+
+// <ELSE> ::= 'else' '{' <BODY> '}' |
+//            <Empty>
+func (p *Parser) Else(nodeIf *NodeIf) error {
+	p.pushTrace("Else")
+	defer p.popTrace()
+
+	tokElse, err := p.l.Peek()
+	if err != nil || tokElse.GetLexeme() != "else" {
+		return err
+	}
+
+	p.l.Lex()
+
+	t, isLCurl, err := p.match(fxlex.TokLCurl)
+	if err != nil {
+		return err
+	} else if !isLCurl {
+		p.errorf("%s:%d: syntax error: if (bad statement)",
+			p.l.GetFilename(), p.l.GetLineNumber())
+		err = p.l.SkipUntil(fxlex.TokRCurl)
+		if err != nil {
+			return err
+		}
+	} else {
+		p.pushTrace(fmt.Sprintf("%s", t))
+		p.popTrace()
+	}
+
+	nodeIf.bodyElse = NewBody()
+	if err = p.Body(nodeIf.bodyElse); err != nil {
+		return err
+	}
+
+	t, isRCurl, err := p.match(fxlex.TokRCurl)
+	if err != nil {
+		return err
+	} else if !isRCurl {
+		p.errorf("%s:%d: syntax error: if (bad statement)",
 			p.l.GetFilename(), p.l.GetLineNumber())
 		err = p.l.SkipUntilAndLex(fxlex.TokRCurl)
 		if err != nil {
