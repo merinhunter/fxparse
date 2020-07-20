@@ -415,6 +415,7 @@ func (p *Parser) Prms(head *Head) error {
 // <BODY> ::= id '(' <CALL> <BODY> |
 //            'iter' <ITER> <BODY> |
 //            type_id id ; <BODY> |
+//            var_id '=' <EXPR> ';' <BODY> |
 //            '{' <BODY> '}' |
 //            <Empty>
 func (p *Parser) Body(body *Body) error {
@@ -509,6 +510,45 @@ func (p *Parser) Body(body *Body) error {
 			}
 
 			stm.AddDecl(vSym)
+		case "SVar":
+			asign := NewAsign()
+			asign.AddSym(sym)
+
+			t, isEqual, err := p.match(fxlex.Assignation)
+			if err != nil {
+				return err
+			} else if !isEqual {
+				p.errorf("%s:%d: syntax error: bad statement",
+					p.l.GetFilename(), p.l.GetLineNumber())
+				err = p.l.SkipUntil(fxlex.Semicolon)
+				if err != nil {
+					return err
+				}
+			} else {
+				p.pushTrace(fmt.Sprintf("%s", t))
+				p.popTrace()
+			}
+
+			expr, err := p.Expr(defRbp - 1)
+			if err != nil {
+				return err
+			}
+			asign.AddValue(expr)
+
+			t, isSemicolon, err := p.match(fxlex.Semicolon)
+			if err != nil {
+				return err
+			} else if !isSemicolon {
+				p.errorf("%s:%d: syntax error: bad statement",
+					p.l.GetFilename(), p.l.GetLineNumber())
+				err = p.l.SkipUntilAndLex(fxlex.Semicolon)
+				return err
+			} else {
+				p.pushTrace(fmt.Sprintf("%s", t))
+				p.popTrace()
+			}
+
+			stm.AddAsign(asign)
 		default:
 			p.errorf("%s:%d: syntax error: symbol %s not expected",
 				p.l.GetFilename(), p.l.GetLineNumber(), tokID.GetLexeme())
@@ -624,7 +664,7 @@ func (p *Parser) ArgsList(call *Call) error {
 	p.pushTrace("ArgsList")
 	defer p.popTrace()
 
-	arg, err := p.Expr()
+	arg, err := p.Expr(defRbp - 1)
 	if err != nil {
 		return err
 	}
@@ -647,7 +687,7 @@ func (p *Parser) Args(call *Call) error {
 		p.popTrace()
 	}
 
-	arg, err := p.Expr()
+	arg, err := p.Expr(defRbp - 1)
 	if err != nil {
 		return err
 	}
@@ -721,7 +761,7 @@ func (p *Parser) Iter(iter *Iter) error {
 		p.popTrace()
 	}
 
-	e, err := p.Expr()
+	e, err := p.Expr(defRbp - 1)
 	if err != nil {
 		return err
 	}
@@ -743,7 +783,7 @@ func (p *Parser) Iter(iter *Iter) error {
 		p.popTrace()
 	}
 
-	e, err = p.Expr()
+	e, err = p.Expr(defRbp - 1)
 	if err != nil {
 		return err
 	}
@@ -765,7 +805,7 @@ func (p *Parser) Iter(iter *Iter) error {
 		p.popTrace()
 	}
 
-	e, err = p.Expr()
+	e, err = p.Expr(defRbp - 1)
 	if err != nil {
 		return err
 	}
@@ -822,80 +862,4 @@ func (p *Parser) Iter(iter *Iter) error {
 	}
 
 	return err
-}
-
-// <EXPR> ::= <ATOM>
-func (p *Parser) Expr() (e *Expr, err error) {
-	p.pushTrace("Expr")
-	defer p.popTrace()
-
-	sTok, err := p.Atom()
-	if err != nil {
-		return nil, err
-	}
-
-	return NewExpr(sTok), nil
-}
-
-// <ATOM> ::= id |
-//						num |
-//						bool
-func (p *Parser) Atom() (sTok *fxsym.Sym, err error) {
-	p.pushTrace("Atom")
-	defer p.popTrace()
-
-	t, err := p.l.Peek()
-	if err != nil {
-		return nil, err
-	}
-
-	switch t.GetTokType() {
-	case fxlex.TokID:
-		t, err = p.l.Lex()
-		if err != nil {
-			return nil, err
-		}
-
-		p.pushTrace(fmt.Sprintf("ID %s", t))
-		defer p.popTrace()
-
-		sTok = p.stkEnv.GetSym(t.GetLexeme())
-		if sTok == nil {
-			p.errorf("%s:%d: syntax error: symbol %s not found",
-				p.l.GetFilename(), p.l.GetLineNumber(), t.GetLexeme())
-		}
-	case fxlex.TokIntLit:
-		t, err = p.l.Lex()
-		if err != nil {
-			return nil, err
-		}
-
-		p.pushTrace(fmt.Sprintf("Num %s", t))
-		defer p.popTrace()
-
-		sTok = &fxsym.Sym{}
-		sTok.AddSymType(fxsym.SVar)
-		sTok.AddTokKind(t.GetTokType())
-		sTok.AddPlace(p.l.GetFilename(), p.l.GetLineNumber())
-		sTok.AddContent(t.GetValue())
-	case fxlex.TokBoolLit:
-		t, err = p.l.Lex()
-		if err != nil {
-			return nil, err
-		}
-
-		p.pushTrace(fmt.Sprintf("Bool %s", t))
-		defer p.popTrace()
-
-		sTok = &fxsym.Sym{}
-		sTok.AddSymType(fxsym.SVar)
-		sTok.AddTokKind(t.GetTokType())
-		sTok.AddPlace(p.l.GetFilename(), p.l.GetLineNumber())
-		sTok.AddContent(t.GetValue() != 0)
-	default:
-		p.errorf("%s:%d: syntax error: expected id, number or bool, found %s",
-			p.l.GetFilename(), p.l.GetLineNumber(), t.GetTokType())
-	}
-
-	return sTok, err
 }

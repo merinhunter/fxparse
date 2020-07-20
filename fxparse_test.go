@@ -36,11 +36,13 @@ func line(int x, int y){
 func main(){
   int k;
 
+  k = 2;
   iter (i := 0, 3, 1){
     rect(i, i, 3, 0xff);
+    k = i;
   }
   iter (j := 0, 8, 2){ // loops 0 2 4 6 8
-    rect(j, j, 8, 0xff);
+    rect(j, k, 8, 0xff);
   }
   circle(4, 5, 2, 0x11000011);
 }

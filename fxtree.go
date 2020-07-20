@@ -2,6 +2,7 @@ package fxparse
 
 import (
 	"fmt"
+	"fxlex"
 	"fxsym"
 	"strings"
 )
@@ -160,6 +161,7 @@ type Statement struct {
 	iter  *Iter
 	body  *Body
 	decl  *fxsym.Sym
+	asign *Asign
 	depth int
 }
 
@@ -169,6 +171,7 @@ func NewStatement() (stm *Statement) {
 	stm.iter = nil
 	stm.body = nil
 	stm.decl = nil
+	stm.asign = nil
 
 	return stm
 }
@@ -197,6 +200,12 @@ func (stm *Statement) AddDecl(decl *fxsym.Sym) {
 	}
 }
 
+func (stm *Statement) AddAsign(asign *Asign) {
+	if asign != nil {
+		stm.asign = asign
+	}
+}
+
 func (stm *Statement) String() string {
 	if stm == nil {
 		return nullString
@@ -214,6 +223,9 @@ func (stm *Statement) String() string {
 	} else if stm.decl != nil {
 		stm.decl.SetDepth(stm.depth)
 		return fmt.Sprintf("%s", stm.decl)
+	} else if stm.asign != nil {
+		stm.asign.depth = stm.depth
+		return fmt.Sprintf("%s", stm.asign)
 	}
 
 	return nullString
@@ -336,18 +348,58 @@ func (iter *Iter) String() string {
 	return output
 }
 
-type Expr struct {
-	atom  *fxsym.Sym
+type Asign struct {
+	sym   *fxsym.Sym
+	value *Expr
 	depth int
 }
 
-func NewExpr(sTok *fxsym.Sym) (expr *Expr) {
-	expr = &Expr{depth: 0}
-	if sTok != nil {
-		expr.atom = sTok
+func NewAsign() (asign *Asign) {
+	asign = &Asign{depth: 0}
+	asign.sym = nil
+	asign.value = nil
+
+	return asign
+}
+
+func (asign *Asign) AddSym(s *fxsym.Sym) {
+	if s != nil {
+		asign.sym = s
+	}
+}
+
+func (asign *Asign) AddValue(value *Expr) {
+	if value != nil {
+		asign.value = value
+	}
+}
+
+func (asign *Asign) String() string {
+	if asign == nil {
+		return nullString
 	}
 
-	return expr
+	tabs := strings.Repeat("\t", asign.depth)
+	output := fmt.Sprintf("%s%p ASIGN", tabs, asign)
+	// Sym
+	asign.sym.SetDepth(asign.depth + 1)
+	output += fmt.Sprintf("\n%s", asign.sym)
+	// Value
+	asign.value.depth = asign.depth + 1
+	output += fmt.Sprintf("\n%s", asign.value)
+
+	return output
+}
+
+type Expr struct {
+	tok    fxlex.Token
+	ERight *Expr
+	ELeft  *Expr
+	depth  int
+}
+
+func NewExpr(tok fxlex.Token) (expr *Expr) {
+	return &Expr{tok: tok, depth: 0}
 }
 
 func (e *Expr) String() string {
@@ -356,10 +408,5 @@ func (e *Expr) String() string {
 	}
 
 	tabs := strings.Repeat("\t", e.depth)
-	output := fmt.Sprintf("%s%p EXPR", tabs, e)
-	// Atom
-	e.atom.SetDepth(e.depth + 1)
-	output += fmt.Sprintf("\n%s", e.atom)
-
-	return output
+	return fmt.Sprintf("%s%p EXPR[%s](%d) L->%p R->%p", tabs, e, e.tok.GetType(), e.tok.GetValue(), e.ELeft, e.ERight)
 }
