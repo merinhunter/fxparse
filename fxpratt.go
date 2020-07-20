@@ -11,31 +11,31 @@ import (
 var precTab = map[rune]int{
 	')':          1,
 	'|':          10,
-	'&':          10,
-	'^':          10,
-	'!':          20,
-	'<':          30,
-	'>':          30,
-	fxlex.TokGTE: 30,
-	fxlex.TokLTE: 30,
-	'+':          40,
-	'-':          40,
-	'*':          50,
-	'/':          50,
-	'%':          50,
-	fxlex.TokPow: 60,
-	'(':          70,
+	'&':          20,
+	'^':          30,
+	'<':          40,
+	'>':          40,
+	fxlex.TokGTE: 40,
+	fxlex.TokLTE: 40,
+	'+':          50,
+	'-':          50,
+	'*':          60,
+	'/':          60,
+	'%':          60,
+	fxlex.TokPow: 70,
+	'!':          70,
+	'(':          80,
 }
 
 var leftTab = map[rune]bool{
 	fxlex.TokPow: true,
 }
+
 var unaryTab = map[rune]bool{
 	'+': true,
 	'-': true,
 	'(': true,
 	'!': true,
-	'^': true,
 }
 
 //no left context, null-denotation: nud

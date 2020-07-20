@@ -30,11 +30,11 @@ func line(int x, int y){
   int px;
   int py;
 
-	iter (i := 0, x + y, 1){	//declares the variable only in the loop
+  iter (i := 0, x + y, 1){	//declares the variable only in the loop
     px = x * i;
     py = y * i;
-		circle(px, py, 2, 1);
-	}
+    circle(px, py, 2, 1);
+  }
 }
 
 //macro entry
