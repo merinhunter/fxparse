@@ -12,6 +12,8 @@ const maxErrors = 5
 
 var DebugParser bool = false
 
+var DebugTree bool = false
+
 type Parser struct {
 	l      *fxlex.Lexer
 	nErr   int
@@ -39,7 +41,13 @@ func (p *Parser) Parse() error {
 	}
 
 	if p.nErr == 0 {
-		fmt.Println(prog)
+		if DebugTree {
+			fmt.Println(prog)
+		}
+
+		p.stkEnv.PopEnv()
+		p.stkEnv.PushEnv()
+		prog.Interp(&p.stkEnv)
 	}
 
 	return nil
@@ -466,6 +474,11 @@ func (p *Parser) Body(body *Body) error {
 
 			if err := p.Call(call); err != nil {
 				return err
+			}
+
+			if len(call.f.Content().(*Func).head.params) != len(call.args) {
+				p.errorf("%s:%d: syntax error: bad number of args",
+					p.l.GetFilename(), p.l.GetLineNumber())
 			}
 
 			stm.AddCall(call)

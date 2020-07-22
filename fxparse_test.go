@@ -30,7 +30,7 @@ func line(int x, int y){
   int px;
   int py;
 
-  iter (i := 0, x + y, 1){	//declares the variable only in the loop
+  iter (i := 0, x, 1){	//declares the variable only in the loop
     px = x * i;
     py = y * i;
     circle(px, py, 2, 1);
@@ -54,12 +54,12 @@ func main(){
   }
 
   if(k < 3) {
-    line(py, px);
-    line(py, px);
+    line(px, py);
+    line(px, py);
   }
 
-  iter (i := 0, 3, 1){
-    rect(px, py, 5, 0xff);
+  iter (i := 0, 5, 2){
+    rect(px, py, i, 0xff);
   }
 }
 `
@@ -78,6 +78,7 @@ func newTestParser(t *testing.T, text string) (p *Parser) {
 func TestParse(t *testing.T) {
 	p := newTestParser(t, exampleFile)
 	DebugParser = false
+	DebugTree = false
 	fxlex.DebugLexer = false
 
 	if err := p.Parse(); err != nil {

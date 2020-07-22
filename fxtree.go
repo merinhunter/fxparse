@@ -4,24 +4,12 @@ import (
 	"fmt"
 	"fxlex"
 	"fxsym"
+	"math"
+	"os"
 	"strings"
 )
 
 const nullString = "nil"
-
-/*type TreeSym fxsym.Sym
-
-func (s *TreeSym) Content() interface{} {
-	return s.Content()
-}
-
-func (s *TreeSym) GetFunc() (f *Func, err error) {
-	if f, ok := s.Content().(*Func); ok {
-		return f, nil
-	} else {
-		return nil, errors.New("cast to Func failed")
-	}
-}*/
 
 type Prog struct {
 	funcs []*fxsym.Sym
@@ -58,6 +46,27 @@ func (p *Prog) String() string {
 	return output
 }
 
+func (prog *Prog) Interp(envs *fxsym.StkEnv) {
+	envs.DPrintf("Prog\n")
+
+	for _, f := range prog.funcs {
+		if f == nil {
+			continue
+		}
+
+		if f.Name() == "main" {
+			f.Content().(*Func).Interp(envs)
+		} else {
+			fSym, err := envs.NewSym(f.Name(), fxsym.SFunc)
+			if err != nil {
+				panic("bad func definition")
+			}
+
+			fSym.AddContent(f.Content().(*Func))
+		}
+	}
+}
+
 type Func struct {
 	head  *Head
 	body  *Body
@@ -87,6 +96,17 @@ func (f *Func) String() string {
 	output += fmt.Sprintf("%s", f.body)
 
 	return output
+}
+
+func (f *Func) Interp(envs *fxsym.StkEnv) {
+	envs.DPrintf("Func\n")
+
+	envs.PushEnv()
+	f.body.PushVars(envs)
+	if f.body != nil {
+		f.body.Interp(envs)
+	}
+	envs.PopEnv()
 }
 
 type Head struct {
@@ -137,6 +157,29 @@ func NewBody() (body *Body) {
 func (b *Body) AddStm(stm *Statement) {
 	if stm != nil {
 		b.stms = append(b.stms, stm)
+	}
+}
+
+func (b *Body) PushVars(envs *fxsym.StkEnv) {
+	for _, stm := range b.stms {
+		if stm.decl != nil {
+			envs.DPrintf("PUSHING VAR %s\n", stm.decl.Name())
+			s, err := envs.NewSymWithShadowing(stm.decl.Name(), fxsym.SVar)
+			if err != nil {
+				panic(err)
+			}
+			s.SetType(stm.decl.Type())
+		}
+	}
+}
+
+func (b *Body) Interp(envs *fxsym.StkEnv) {
+	envs.DPrintf("Body\n")
+	for _, stm := range b.stms {
+		if stm == nil {
+			continue
+		}
+		stm.Interp(envs)
 	}
 }
 
@@ -214,6 +257,26 @@ func (stm *Statement) AddNodeIf(nodeIf *NodeIf) {
 	}
 }
 
+func (stm *Statement) Interp(envs *fxsym.StkEnv) {
+	envs.DPrintf("Statement\n")
+
+	if stm.call != nil {
+		stm.call.Interp(envs)
+	} else if stm.iter != nil {
+		stm.iter.Interp(envs)
+	} else if stm.body != nil {
+		stm.body.Interp(envs)
+	} else if stm.decl != nil {
+		return
+	} else if stm.asign != nil {
+		stm.asign.Interp(envs)
+	} else if stm.nodeIf != nil {
+		stm.nodeIf.Interp(envs)
+	} else {
+		panic("empty statement")
+	}
+}
+
 func (stm *Statement) String() string {
 	if stm == nil {
 		return nullString
@@ -287,6 +350,41 @@ func (c *Call) String() string {
 	return output
 }
 
+func (call *Call) Interp(envs *fxsym.StkEnv) {
+	envs.DPrintf("Func\n")
+
+	eS := *envs
+	if fSym, ok := eS[0][call.f.Name()]; ok {
+		f := fSym.Content().(*Func)
+
+		if len(f.head.params) != len(call.args) {
+			panic("Number of args error")
+		}
+
+		args := ""
+		for _, arg := range call.args {
+			args += fmt.Sprintf("%d ", arg.Eval(envs))
+		}
+
+		fmt.Printf("%s %s\n", f.head.id, args)
+	} else {
+		fSym = envs.GetSym(call.f.Name())
+		f := fSym.Content().(*Func)
+
+		if len(f.head.params) != len(call.args) {
+			panic("Number of args error")
+		}
+
+		envs.PushEnv()
+		for i, param := range f.head.params {
+			sParam, _ := envs.NewSymWithShadowing(param.Name(), fxsym.SVar)
+			sParam.AddContent(call.args[i].Eval(envs))
+		}
+		f.Interp(envs)
+		envs.PopEnv()
+	}
+}
+
 type Iter struct {
 	varControl *fxsym.Sym
 	start      *Expr
@@ -331,6 +429,25 @@ func (iter *Iter) AddBody(b *Body) {
 	if b != nil {
 		iter.body = b
 	}
+}
+
+func (iter *Iter) Interp(envs *fxsym.StkEnv) {
+	envs.DPrintf("Iter\n")
+
+	envs.PushEnv()
+	iter.body.PushVars(envs)
+	varControl, err := envs.NewSym(iter.varControl.Name(), fxsym.SVar)
+	if err != nil {
+		panic("varControl failed")
+	}
+	start := iter.start.Eval(envs)
+	end := iter.end.Eval(envs)
+	step := iter.step.Eval(envs)
+	for i := start; i < end; i += step {
+		varControl.AddContent(i)
+		iter.body.Interp(envs)
+	}
+	envs.PopEnv()
 }
 
 func (iter *Iter) String() string {
@@ -402,6 +519,17 @@ func (asign *Asign) String() string {
 	return output
 }
 
+func (asign *Asign) Interp(envs *fxsym.StkEnv) {
+	envs.DPrintf("Asign\n")
+
+	valVar := asign.value.Eval(envs)
+	v := envs.GetSym(asign.sym.Name())
+	if v == nil {
+		panic("Symbol not defined")
+	}
+	v.AddContent(valVar)
+}
+
 type NodeIf struct {
 	cond     *Expr
 	body     *Body
@@ -460,6 +588,18 @@ func (nodeIf *NodeIf) String() string {
 	return output
 }
 
+func (nodeIf *NodeIf) Interp(envs *fxsym.StkEnv) {
+	envs.DPrintf("NodeIf\n")
+
+	if nodeIf.cond.Eval(envs) != 0 {
+		nodeIf.body.Interp(envs)
+	} else {
+		if nodeIf.bodyElse != nil {
+			nodeIf.bodyElse.Interp(envs)
+		}
+	}
+}
+
 type Expr struct {
 	tok    fxlex.Token
 	ERight *Expr
@@ -478,4 +618,89 @@ func (e *Expr) String() string {
 
 	tabs := strings.Repeat("\t", e.depth)
 	return fmt.Sprintf("%s%p EXPR[%s](%d) L->%p R->%p", tabs, e, e.tok.GetType(), e.tok.GetValue(), e.ELeft, e.ERight)
+}
+
+func (e *Expr) Eval(envs *fxsym.StkEnv) int64 {
+	if DebugParser {
+		fmt.Fprintf(os.Stderr, "%s\n", e)
+	}
+	rV := int64(0)
+	lV := int64(0)
+	if e == nil {
+		return 0
+	}
+	if e.ERight != nil {
+		rV = e.ERight.Eval(envs)
+	}
+	if e.ELeft != nil {
+		lV = e.ELeft.Eval(envs)
+	}
+	tok := e.tok
+	switch tok.GetTokType() {
+	case fxlex.TokMinus:
+		return lV - rV
+	case fxlex.TokPlus:
+		return lV + rV
+	case fxlex.TokTimes:
+		return lV * rV
+	case fxlex.TokDivide:
+		return lV / rV
+	case fxlex.TokRem:
+		return int64(math.Mod(float64(lV), float64(rV)))
+	case fxlex.TokPow:
+		return int64(math.Pow(float64(lV), float64(rV)))
+	case fxlex.TokGT:
+		if lV > rV {
+			return 1.0
+		}
+		return 0.0
+	case fxlex.TokLT:
+		if lV < rV {
+			return 1.0
+		}
+		return 0.0
+	case fxlex.TokGTE:
+		if lV >= rV {
+			return 1.0
+		}
+		return 0.0
+	case fxlex.TokLTE:
+		if lV <= rV {
+			return 1.0
+		}
+		return 0.0
+	case fxlex.TokOr:
+		if (lV != 0) || (rV != 0) {
+			return 1.0
+		}
+		return 0.0
+	case fxlex.TokAnd:
+		if (lV != 0) && (rV != 0) {
+			return 1.0
+		}
+		return 0.0
+	case fxlex.TokNeg:
+		if !(rV != 0) {
+			return 1.0
+		}
+		return 0.0
+	case fxlex.TokXor:
+		if (lV != 0) != (rV != 0) {
+			return 1.0
+		}
+		return 0.0
+	case fxlex.TokIntLit:
+		return tok.GetValue()
+	case fxlex.TokBoolLit:
+		return tok.GetValue()
+	case fxlex.TokID:
+		sym := envs.GetSym(tok.GetLexeme())
+		if sym == nil {
+			panic("Bad subtree")
+		}
+
+		return sym.Content().(int64)
+	default:
+		panic("Bad subtree")
+	}
 }
