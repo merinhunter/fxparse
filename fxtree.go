@@ -696,7 +696,7 @@ func (e *Expr) Eval(envs *fxsym.StkEnv) int64 {
 	case fxlex.TokID:
 		sym := envs.GetSym(tok.GetLexeme())
 		if sym == nil {
-			panic("Bad subtree")
+			panic(fmt.Sprintf("symbol %s does not exist", tok.GetLexeme()))
 		}
 
 		return sym.Content().(int64)
